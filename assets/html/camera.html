@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script async src="https://unpkg.com/es-module-shims@1.7.2/dist/es-module-shims.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.153.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.153.0/examples/jsm/",
+        "mindar-face-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-face-three.prod.js",
+        "gltfloader": "./scripts/GLTFLoader.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { MindARThree } from 'mindar-face-three';
+    import { GLTFLoader } from './scripts/GLTFLoader.js';
+
+    const mindarThree = new MindARThree({
+      container: document.querySelector("#container"),
+    });
+
+
+    const { renderer, scene, camera } = mindarThree;
+
+    const threeCanvas = renderer.domElement;
+    const canvasStream = threeCanvas.captureStream(60); // 60 FPS
+
+    const loader = new GLTFLoader();
+
+    const skyColor = 0xB1E1FF;  // light blue
+    const groundColor = 0xB97A20;  // brownish orange
+    const light = new THREE.HemisphereLight(skyColor, groundColor, 1);
+    scene.add(light);
+
+    let mustacheAnchor;
+
+    function cambiarFiltro(url, anchor) {
+      if (mustacheAnchor) {
+        scene.remove(mustacheAnchor.group);
+        mustacheAnchor = null;
+      }
+
+      mustacheAnchor = mindarThree.addAnchor(anchor);
+      loader.load(
+        url,
+        function (gltf) {
+          mustacheAnchor.group.add(gltf.scene);
+        },
+        function (xhr) {
+          console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+        },
+        function (error) {
+          console.log('An error happened');
+        }
+      );
+    }
+
+    const start = async () => {
+      await mindarThree.start();
+      renderer.setAnimationLoop(() => {
+        renderer.render(scene, camera);
+      });
+    }
+
+    start();
+
+    let mediaRecorder;
+    let recordedChunks = [];
+
+
+    async function getCombinedStream() {
+      try {
+        // Captura tanto el vídeo como el audio
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 720, height: 1280 }, // Resolución con aspect ratio 9:16
+          video: true, audio: true
+        });
+
+        const videoElement = document.createElement('video');
+        videoElement.srcObject = mediaStream;
+        videoElement.muted = true; // Asegúrate de silenciar el videoElement
+        videoElement.play();
+
+        const compositeCanvas = document.getElementById('compositeCanvas');
+        compositeCanvas.width = 720;
+        compositeCanvas.height = 1280;
+        const context = compositeCanvas.getContext('2d');
+
+        const draw = () => {
+          if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
+            context.clearRect(0, 0, compositeCanvas.width, compositeCanvas.height);
+            context.drawImage(videoElement, 0, 0, compositeCanvas.width, compositeCanvas.height);
+            context.drawImage(threeCanvas, 0, 0, compositeCanvas.width, compositeCanvas.height);
+
+          }
+          requestAnimationFrame(draw);
+        };
+
+        draw();
+
+        // Captura el stream del canvas compuesto y agrega las pistas de audio del mediaStream
+        const combinedStream = new MediaStream([...compositeCanvas.captureStream(60).getVideoTracks(), ...mediaStream.getAudioTracks()]);
+        return combinedStream;
+
+      } catch (error) {
+        console.error('Error accessing media devices.', error);
+        return null;
+      }
+    }
+
+
+
+
+    async function getVideoStream() {
+      try {
+        // Captura solo el vídeo, sin audio, para evitar el rebote
+        const videoStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1080, height: 1920 }, // HD resolution
+          video: true, audio: false
+        });
+        return videoStream;
+      } catch (error) {
+        console.error('Error accessing media devices.', error);
+        return null;
+      }
+    }
+
+    async function getAudioStream() {
+      try {
+        // Captura solo el audio
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        return audioStream;
+      } catch (error) {
+        console.error('Error accessing media devices.', error);
+        return null;
+      }
+    }
+
+
+    function startRecording(stream) {
+      recordedChunks = [];
+
+      // Inicializa el MediaRecorder con el stream del canvas de composición
+      mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm',
+        videoBitsPerSecond: 5000000 // Aumentar la tasa de bits
+      });
+
+      mediaRecorder.ondataavailable = function (event) {
+        if (event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = onRecordingStopped;
+      mediaRecorder.start();
+    }
+    function onRecordingStopped() {
+      const blob = new Blob(recordedChunks, { type: "video/webm" });
+      const url = window.URL.createObjectURL(blob);
+      const reader = new FileReader(); // Define el FileReader aquí
+
+      // Crear un enlace para la descarga del vídeo
+      const a = document.createElement("a");
+      document.body.appendChild(a);
+      a.style = "display: none";
+      a.href = url;
+      a.download = "recordedVideo.webm"; // Nombre del archivo
+      a.click();
+
+      // Enviar mensaje a Flutter indicando que la descarga ha iniciado
+      window.parent.postMessage({ action: "videoDownloadInitiated" }, '*');
+
+      // Liberar recursos
+      window.URL.revokeObjectURL(url);
+
+      // Enviar a flutter base64
+      reader.readAsDataURL(blob);
+      reader.onloadend = () => {
+        const base64data = reader.result;
+        // Enviar el base64data a Flutter
+        window.parent.postMessage({ action: "videoRecorded", data: base64data }, '*');
+      };
+      a.remove();
+    }
+
+    window.addEventListener('message', async (event) => {
+      console.log("Mensaje recibido: en camera", event.data);
+
+      const data = event.data;
+      if (data && data.action === 'startRecording') {
+        const combinedStream = await getCombinedStream(); // Obtiene el stream combinado
+        if (combinedStream) {
+          startRecording(combinedStream);
+          setTimeout(() => {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+              mediaRecorder.stop();
+            }
+          }, 5000); // Detiene la grabación después de 5 segundos
+        }
+      }
+      else if (data && data.url && data.anchor) {
+        cambiarFiltro(data.url, data.anchor);
+      }
+    }, false);
+
+  </script>
+
+  <style>
+    body {
+      margin: 0;
+    }
+
+    #container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #control {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 2;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="control">
+  </div>
+  <div id="container">
+  </div>
+  <canvas id="compositeCanvas" width="720" height="1280" style="display: none;"></canvas>
+</body>
+
+</html>

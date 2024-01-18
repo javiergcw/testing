@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <script async src="https://unpkg.com/es-module-shims@1.7.2/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.153.0/build/three.module.js"
+      }
+    }
+  </script>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        #backupImage {
+            width: 100%;
+            height: auto;
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: none;
+            /* Inicialmente oculto */
+        }
+
+        #videoContainer {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="videoContainer"></div> <!-- Cambiado el ID para evitar duplicados -->
+    <img id="backupImage" src="https://via.placeholder.com/720x1280" /> <!-- Ruta de imagen de respaldo aquí -->
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const videoContainer = document.getElementById('videoContainer');
+        const backupImage = document.getElementById('backupImage');
+
+        const startCamera = async () => {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoInputDevices = devices.filter(device => device.kind === 'videoinput');
+
+                let hasRearCamera = false;
+                videoInputDevices.forEach(device => {
+                    if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
+                        hasRearCamera = true;
+                    }
+                });
+
+                if (hasRearCamera) {
+                    const videoStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: "environment" }
+                    });
+
+                    const videoElement = document.createElement('video');
+                    videoElement.srcObject = videoStream;
+                    videoElement.muted = true;
+                    videoElement.play();
+                    videoContainer.appendChild(videoElement);
+                } else {
+                    displayBackupImage();
+                }
+            } catch (error) {
+                console.error('Error accessing media devices.', error);
+                displayBackupImage();
+            }
+        };
+
+        const displayBackupImage = () => {
+            backupImage.style.display = 'block'; // Muestra la imagen de respaldo
+        };
+
+        let mediaRecorder;
+        let recordedChunks = [];
+
+        const startRecording = (stream) => {
+            recordedChunks = [];
+            mediaRecorder = new MediaRecorder(stream);
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = onRecordingStopped;
+            mediaRecorder.start();
+        };
+
+        const onRecordingStopped = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            // Aquí puedes manejar el blob de video, por ejemplo, guardarlo o enviarlo a un servidor
+        };
+        startCamera();
+
+    </script>
+
+</body>
+
+</html>
+
+<!-- <!DOCTYPE html>
+<html>
+
+<head>
+    <script async src="https://unpkg.com/es-module-shims@1.7.2/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.153.0/build/three.module.js"
+      }
+    }
+  </script>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        #backupImage {
+            width: 100%;
+            height: auto;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        h1 {
+            color: blue; /* Color del texto */
+            background-color: yellow; /* Color de fondo */
+            padding: 10px; /* Espaciado interno */
+        }
+
+        .signal {
+            height: 20px;
+            width: 20px;
+            background-color: red; /* Color del círculo */
+            border-radius: 50%; /* Hace el círculo redondo */
+            display: inline-block; /* Permite que el círculo esté al lado del texto */
+            margin-right: 10px; /* Espaciado a la derecha del círculo */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container"></div>
+    <div id="container">
+        <div class="signal"></div>
+        <h1>Cámara trasera</h1>
+    </div>
+    <img id="backupImage" style="display: none;" />
+    <script type="module">
+        import * as THREE from 'three';
+
+        const container = document.getElementById('container');
+        const backupImage = document.getElementById('backupImage');
+
+        const startCamera = async () => {
+            try {
+                const videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" },
+                    audio: true
+                });
+
+                const videoElement = document.createElement('video');
+                videoElement.srcObject = videoStream;
+                videoElement.play();
+                container.appendChild(videoElement);
+            } catch (error) {
+                console.error('Error accessing media devices.', error);
+                displayBackupImage();
+            }
+        };
+
+        const displayBackupImage = () => {
+            backupImage.src = 'https://via.placeholder.com/720x1280'; // URL de tu imagen de respaldo
+            backupImage.style.display = 'block';
+        };
+
+        let mediaRecorder;
+        let recordedChunks = [];
+
+        const startRecording = (stream) => {
+            recordedChunks = [];
+            mediaRecorder = new MediaRecorder(stream);
+
+            mediaRecorder.ondataavailable = function (event) {
+                if (event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = onRecordingStopped;
+            mediaRecorder.start();
+        };
+
+        const onRecordingStopped = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            // Aquí puedes manejar el blob de video, por ejemplo, guardarlo o enviarlo a un servidor
+        };
+
+        window.addEventListener('message2', async (event) => {
+            console.log("Mensaje recibido: en camera back", event.data);
+
+            const data = event.data;
+            if (data && data.action === 'startRecording') {
+                const videoStream = await startCamera();
+                if (videoStream) {
+                    startRecording(videoStream);
+                }
+            } else if (data && data.action === 'stopRecording') {
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+
+                    mediaRecorder.stop();
+                }
+            }
+        }, false);
+    </script>
+
+</body>
+
+</html> -->
