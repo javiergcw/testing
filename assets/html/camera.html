@@ -50,10 +50,10 @@
           mustacheAnchor.group.add(gltf.scene);
         },
         function (xhr) {
-          console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+          // console.log((xhr.loaded / xhr.total * 100) + '% loaded');
         },
         function (error) {
-          console.log('An error happened');
+          // console.log('An error happened');
         }
       );
     }
@@ -75,18 +75,26 @@
       try {
         // Captura tanto el vídeo como el audio
         const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 720, height: 1280 }, // Resolución con aspect ratio 9:16
+          video: { width: 1280, height: 720 }, // Resolución con aspect ratio 9:16
           video: true, audio: true
         });
 
         const videoElement = document.createElement('video');
         videoElement.srcObject = mediaStream;
-        videoElement.muted = true; // Asegúrate de silenciar el videoElement
+        videoElement.muted = true;
+        videoElement.style.position = 'absolute';
+        videoElement.style.width = '100%';
+        videoElement.style.height = '100%';
+        videoElement.style.objectFit = 'cover';
         videoElement.play();
 
+
         const compositeCanvas = document.getElementById('compositeCanvas');
-        compositeCanvas.width = 720;
-        compositeCanvas.height = 1280;
+        compositeCanvas.style.display = 'block';
+        compositeCanvas.style.position = 'absolute';
+        compositeCanvas.style.width = '100%';
+        compositeCanvas.style.height = '100%';
+        compositeCanvas.style.objectFit = 'cover';
         const context = compositeCanvas.getContext('2d');
 
         const draw = () => {
@@ -118,7 +126,7 @@
       try {
         // Captura solo el vídeo, sin audio, para evitar el rebote
         const videoStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1080, height: 1920 }, // HD resolution
+          video: { width: 1280, height: 720 }, // HD resolution
           video: true, audio: false
         });
         return videoStream;
@@ -140,7 +148,7 @@
     }
 
 
-    function startRecording(stream) {
+    function startRecording(stream, id) {
       recordedChunks = [];
 
       // Inicializa el MediaRecorder con el stream del canvas de composición
@@ -155,63 +163,105 @@
         }
       };
 
-      mediaRecorder.onstop = onRecordingStopped;
+      mediaRecorder.onstop = () => onRecordingStopped(id);
       mediaRecorder.start();
     }
-    function onRecordingStopped() {
+
+  
+    var combinedStream;
+
+    window.addEventListener('message', async (event) => {
+      const data = event.data;
+     
+      // Take Picture
+      if (data.action === 'startScreenshoot') {
+          takeScreenshot(data.id);
+      }
+      // Start Recording
+      else if (data && data.action === 'startRecording') {
+        combinedStream = await getCombinedStream(); // Obtiene el stream combinado
+        if (combinedStream) {
+          startRecording(combinedStream, data.id);
+        }
+      } 
+      // Stop Recording
+      else if (data && data.action === 'stopRecording') {
+        if (combinedStream) {
+          if (mediaRecorder && mediaRecorder.state === "recording") {
+              mediaRecorder.stop();
+            }
+        }
+      } 
+      // Change Filter
+      else if (data && data.url && data.anchor) {
+        cambiarFiltro(data.url, data.anchor);
+      }
+    }, false);
+
+    // Function that send the screenshot to flutter
+    async function takeScreenshot(id) {
+      const videoElement = document.querySelector('video'); // Asegúrate de que esto selecciona el elemento de video correcto
+      if (videoElement) {
+          const canvas = document.createElement('canvas');
+          canvas.width = videoElement.videoWidth;
+          canvas.height = videoElement.videoHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+          const screenshotData = canvas.toDataURL('image/png');
+
+          // console.log("Captura de pantalla tomada:", screenshotData); // Log para verificar los datos
+
+          window.parent.postMessage({
+              "iframeId": id,
+              "action": "picture",
+              "screenshotData": screenshotData,
+          }, '*');
+      }
+    }
+    
+    // Function that send the recorded video to flutter
+    function onRecordingStopped(id) {
       const blob = new Blob(recordedChunks, { type: "video/webm" });
       const url = window.URL.createObjectURL(blob);
-      const reader = new FileReader(); // Define el FileReader aquí
+      const reader = new FileReader();
 
-      // Crear un enlace para la descarga del vídeo
+      reader.onloadend = () => {
+        const base64data = reader.result;
+        //console.log("Vídeo frontal desde nativo grabado:", base64data); // Log para verificar los datos
+
+        // Enviar mensaje a la cámara trasera
+        window.parent.postMessage({
+          "iframeId": id,
+          "action": "video",
+          "videoBase64": base64data
+        }, '*');
+
+
+      };
+      reader.readAsDataURL(blob);
+
+     /*  // Crear un enlace para la descarga del vídeo
       const a = document.createElement("a");
       document.body.appendChild(a);
       a.style = "display: none";
       a.href = url;
       a.download = "recordedVideo.webm"; // Nombre del archivo
-      a.click();
-
-      // Enviar mensaje a Flutter indicando que la descarga ha iniciado
-      window.parent.postMessage({ action: "videoDownloadInitiated" }, '*');
+      a.click(); */
 
       // Liberar recursos
       window.URL.revokeObjectURL(url);
-
-      // Enviar a flutter base64
-      reader.readAsDataURL(blob);
-      reader.onloadend = () => {
-        const base64data = reader.result;
-        // Enviar el base64data a Flutter
-        window.parent.postMessage({ action: "videoRecorded", data: base64data }, '*');
-      };
       a.remove();
     }
 
-    window.addEventListener('message', async (event) => {
-      console.log("Mensaje recibido: en camera", event.data);
-
-      const data = event.data;
-      if (data && data.action === 'startRecording') {
-        const combinedStream = await getCombinedStream(); // Obtiene el stream combinado
-        if (combinedStream) {
-          startRecording(combinedStream);
-          setTimeout(() => {
-            if (mediaRecorder && mediaRecorder.state === "recording") {
-              mediaRecorder.stop();
-            }
-          }, 5000); // Detiene la grabación después de 5 segundos
-        }
-      }
-      else if (data && data.url && data.anchor) {
-        cambiarFiltro(data.url, data.anchor);
-      }
-    }, false);
 
   </script>
 
   <style>
     body {
       margin: 0;
+      overflow: hidden;
+      /* Evita desbordamientos */
+
     }
 
     #container {
@@ -227,15 +277,33 @@
       left: 0;
       z-index: 2;
     }
+
+    #videoElement,
+    #compositeCanvas {
+      width: 100%;
+      /* Ajusta al ancho del contenedor */
+      width: 100%;
+      height: 100%;
+      /* Define la relación de aspecto deseada */
+      object-fit: cover;
+      /* Asegura que el video y el canvas cubran todo el contenedor */
+      z-index: 1;
+
+      /* Pone el canvas sobre el video */
+      #videoElement {
+        z-index: 0;
+        /* Pone el video detrás del canvas */
+      }
+    }
   </style>
 </head>
 
 <body>
-  <div id="control">
+  <div id="container" style="width: 100vw; /* O un ancho específico */">
+    <!-- Tus elementos de video y canvas aquí -->
   </div>
-  <div id="container">
   </div>
-  <canvas id="compositeCanvas" width="720" height="1280" style="display: none;"></canvas>
+  <canvas id="compositeCanvas" width="1280" height="720" style="display: none;"></canvas>
 </body>
 
 </html>

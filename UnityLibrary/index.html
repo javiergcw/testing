@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Unity WebGL Player | Unity</title>
+  </head>
+  <body style="text-align: center; padding: 0; border: 0; margin: 0;">
+    <canvas id="unity-canvas" width=960 height=600 tabindex="-1" style="width:100%; height:100%; background: #231F20"></canvas>
+    <script src="Build/UnityLibrary.loader.js"></script>
+    
+    <!--script src="https://cdn.jsdelivr.net/gh/c-kick/mobileConsole/hnl.mobileconsole.min.js"></script-->
+    <script src="scripts/PageLoader.js"></script>
+    <script>
+        var mainUnityInstance;
+
+        window['handleUnityMessage'] = function (params) {
+        window.parent.postMessage({
+            name: 'onUnityMessage',
+            data: params,
+            }, '*');
+        };
+
+        window['handleUnitySceneLoaded'] = function (name, buildIndex, isLoaded, isValid) {
+        window.parent.postMessage({
+            name: 'onUnitySceneLoaded',
+            data: {
+                'name': name,
+                'buildIndex': buildIndex,
+                'isLoaded': isLoaded == 1,
+                'isValid': isValid == 1,
+            }
+            }, '*');
+        };
+
+        window.parent.addEventListener('unityFlutterBiding', function (args) {
+            const obj = JSON.parse(args.data);
+            mainUnityInstance.SendMessage(obj.gameObject, obj.methodName, obj.message);
+        });
+
+        window.parent.addEventListener('unityFlutterBidingFnCal', function (args) {
+            mainUnityInstance.SendMessage('GameManager', 'HandleWebFnCall', args);
+        });
+
+        window.addEventListener("load", function () {
+            if ("serviceWorker" in navigator) {
+                navigator.serviceWorker.register("ServiceWorker.js");
+            }
+        });
+
+        //UNITY SCRIPTS
+        function InitGPS(){
+        if ("geolocation" in navigator) {
+            navigator.geolocation.watchPosition(function(position) {
+            var lat = position.coords.latitude;
+            var lon = position.coords.longitude;
+            mainUnityInstance.SendMessage('ARPostController', 'setWebCoords', lat.toString()+","+lon.toString());
+        }, function(error){ 
+            console.error("Error occurred: " + error.message);
+        });
+        } else {
+            console.log("Geolocation is not supported by this browser.");
+            }
+        }
+        
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        // Mobile device style: fill the whole browser client area with the game canvas:
+        var meta = document.createElement('meta');
+        meta.name = 'viewport';
+        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+        document.getElementsByTagName('head')[0].appendChild(meta);
+
+        var canvas = document.querySelector("#unity-canvas");
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+        canvas.style.position = "fixed";
+
+        document.body.style.textAlign = "left";
+      }
+
+      createUnityInstance(document.querySelector("#unity-canvas"), {
+        dataUrl: "Build/UnityLibrary.data.unityweb",
+        frameworkUrl: "Build/UnityLibrary.framework.js.unityweb",
+        codeUrl: "Build/UnityLibrary.wasm.unityweb",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "DefaultCompany",
+        productName: "Unity",
+        productVersion: "1.0",
+        // matchWebGLToCanvasSize: false, // Uncomment this to separately control WebGL canvas render size and DOM element size.
+        // devicePixelRatio: 1, // Uncomment this to override low DPI rendering on high DPI displays.
+      
+      }).then((unityInstance) => {
+        window.parent.postMessage('unityReady', '*');
+        mainUnityInstance = unityInstance;
+            });
+         
+    </script>
+  </body>
+</html>

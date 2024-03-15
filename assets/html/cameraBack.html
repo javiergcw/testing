@@ -15,6 +15,30 @@
             margin: 0;
         }
 
+        #videoContainer {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #cameraBackLabel {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: rgba(255, 255, 0, 0.5);
+            /* Semi-transparent yellow */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+            color: black;
+            z-index: 1;
+            /* Ensure it is above the video */
+        }
+
         #backupImage {
             width: 100%;
             height: auto;
@@ -22,20 +46,26 @@
             top: 0;
             left: 0;
             display: none;
-            /* Inicialmente oculto */
+            /* Initially hidden */
         }
 
-        #videoContainer {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-            overflow: hidden;
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 0;
+            /* Ensure video is below the label */
         }
     </style>
 </head>
 
 <body>
-    <div id="videoContainer"></div>
+    <div id="videoContainer">
+   
+    </div>
     <img id="backupImage" src="https://via.placeholder.com/720x1280" />
 
     <script type="module">
@@ -43,104 +73,19 @@
 
         const videoContainer = document.getElementById('videoContainer');
         const backupImage = document.getElementById('backupImage');
+        const cameraBackLabel = document.getElementById('cameraBackLabel');
 
         const startCamera = async () => {
             try {
                 const videoStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" } // Solicita la cámara trasera
+                    video: { facingMode: "environment" }
                 });
-                videoElement.style.width = '100%';  // Establece el ancho a 100%
-                videoElement.style.height = '100%'; // Establece la altura a 100%
-                videoElement.style.objectFit = 'cover'; // Asegura que el video cubra completamente el área
+
                 const videoElement = document.createElement('video');
                 videoElement.srcObject = videoStream;
-                videoElement.muted = true; // Silencia el video
+                videoElement.muted = true;
                 videoElement.play();
                 videoContainer.appendChild(videoElement);
-            } catch (error) {
-                console.error('Error accessing media devices.', error);
-                displayBackupImage(); // Muestra la imagen de respaldo si hay un error
-            }
-        };
-
-        const displayBackupImage = () => {
-            console.log('Mostrando imagen de respaldo');
-            backupImage.style.display = 'block';
-        };
-
-        startCamera();
-    </script>
-
-</body>
-
-</html>
-
-
-<!-- <!DOCTYPE html>
-<html>
-
-<head>
-    <script async src="https://unpkg.com/es-module-shims@1.7.2/dist/es-module-shims.js"></script>
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.153.0/build/three.module.js"
-      }
-    }
-  </script>
-    <style>
-        body {
-            margin: 0;
-        }
-
-        #backupImage {
-            width: 100%;
-            height: auto;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-        h1 {
-            color: blue; /* Color del texto */
-            background-color: yellow; /* Color de fondo */
-            padding: 10px; /* Espaciado interno */
-        }
-
-        .signal {
-            height: 20px;
-            width: 20px;
-            background-color: red; /* Color del círculo */
-            border-radius: 50%; /* Hace el círculo redondo */
-            display: inline-block; /* Permite que el círculo esté al lado del texto */
-            margin-right: 10px; /* Espaciado a la derecha del círculo */
-        }
-    </style>
-</head>
-
-<body>
-    <div id="container"></div>
-    <div id="container">
-        <div class="signal"></div>
-        <h1>Cámara trasera</h1>
-    </div>
-    <img id="backupImage" style="display: none;" />
-    <script type="module">
-        import * as THREE from 'three';
-
-        const container = document.getElementById('container');
-        const backupImage = document.getElementById('backupImage');
-
-        const startCamera = async () => {
-            try {
-                const videoStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" },
-                    audio: true
-                });
-
-                const videoElement = document.createElement('video');
-                videoElement.srcObject = videoStream;
-                videoElement.play();
-                container.appendChild(videoElement);
             } catch (error) {
                 console.error('Error accessing media devices.', error);
                 displayBackupImage();
@@ -148,50 +93,123 @@
         };
 
         const displayBackupImage = () => {
-            backupImage.src = 'https://via.placeholder.com/720x1280'; // URL de tu imagen de respaldo
             backupImage.style.display = 'block';
         };
 
-        let mediaRecorder;
-        let recordedChunks = [];
+        startCamera();
 
-        const startRecording = (stream) => {
-            recordedChunks = [];
-            mediaRecorder = new MediaRecorder(stream);
+        let mediaRecorderTrasero;
+        let recordedChunksTrasero = [];
 
-            mediaRecorder.ondataavailable = function (event) {
+        // Función para iniciar la grabación
+        async function startRecordingTrasero(stream, id) {
+            recordedChunksTrasero = [];
+
+            mediaRecorderTrasero = new MediaRecorder(stream, {
+                mimeType: 'video/webm'
+            });
+
+            mediaRecorderTrasero.ondataavailable = function (event) {
                 if (event.data.size > 0) {
-                    recordedChunks.push(event.data);
+                    recordedChunksTrasero.push(event.data);
                 }
             };
 
-            mediaRecorder.onstop = onRecordingStopped;
-            mediaRecorder.start();
-        };
+            mediaRecorderTrasero.onstop = () => onRecordingStoppedTrasero(id);
+            mediaRecorderTrasero.start();
+        }
 
-        const onRecordingStopped = () => {
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
-            // Aquí puedes manejar el blob de video, por ejemplo, guardarlo o enviarlo a un servidor
-        };
+        // Función para manejar el fin de la grabación
+        let videoFrontalData;
 
-        window.addEventListener('message2', async (event) => {
-            console.log("Mensaje recibido: en camera back", event.data);
+        /*  window.addEventListener('message', (event) => {
+             if (event.data.action === 'videoRecordedFrontal') {
+                 videoFrontalData = event.data.data;
+ 
+                 onRecordingStoppedTrasero();
+             }
+         });
+  */
+        // Función para manejar el fin de la grabación de la cámara trasera
+        function onRecordingStoppedTrasero(id) {
+            const blob = new Blob(recordedChunksTrasero, { type: "video/webm" });
+            const reader = new FileReader();
 
-            const data = event.data;
-            if (data && data.action === 'startRecording') {
-                const videoStream = await startCamera();
-                if (videoStream) {
-                    startRecording(videoStream);
-                }
-            } else if (data && data.action === 'stopRecording') {
-                if (mediaRecorder && mediaRecorder.state === 'recording') {
+            reader.readAsDataURL(blob);
+            reader.onloadend = function () {
+                /*                 const base64dataTrasero = reader.result;
+                 */
+                const base64dataTrasero = reader.result;
 
-                    mediaRecorder.stop();
-                }
+                /*console.log("Vídeo trasero desde nativo grabado:", base64dataTrasero); // Log para verificar los datos */ 
+/*                 console.log("Video frontal traido:", videoFrontalData)
+ */                window.parent.postMessage({
+                    "iframeId": id,
+                    "action": "video",
+                    "videoBase64": base64dataTrasero,
+                }, '*');
+
+            };
+        }
+
+
+        // Función para tomar una captura de pantalla
+        async function takeScreenshot(id) {
+            const videoElement = document.querySelector('video'); // Asegúrate de que esto selecciona el elemento de video correcto
+            if (videoElement) {
+                const canvas = document.createElement('canvas');
+                canvas.width = videoElement.videoWidth;
+                canvas.height = videoElement.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                const screenshotData = canvas.toDataURL('image/png');
+
+                // console.log("Captura de pantalla tomada:", screenshotData); // Log para verificar los datos
+
+                window.parent.postMessage({
+                    "iframeId": id,
+                    "action": "picture",
+                    "screenshotData": screenshotData,
+                }, '*');
             }
-        }, false);
-    </script>
+        }
 
+        // Añadir un listener para mensajes de Flutter
+        window.addEventListener('message', async (event) => {
+            
+            const data = event.data;
+
+            // Take Picture
+            if (data.action === 'startScreenshoot') {
+                takeScreenshot(data.id);
+            }
+            // Start Recording
+            else if (data.action === 'startRecording') {
+                // Aquí debes obtener el stream de la cámara trasera
+                const stream = await getCameraBackStream();
+                startRecordingTrasero(stream, data.id);
+            }
+            // Stop Recording
+            else if (data.action === 'stopRecording') {
+                if (mediaRecorderTrasero && mediaRecorderTrasero.state === "recording") {
+                        mediaRecorderTrasero.stop();
+                    }
+            }  
+           
+        });
+
+        // Función para obtener el stream de la cámara trasera
+        async function getCameraBackStream() {
+            try {
+                return await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" }
+                });
+            } catch (error) {
+                console.error('Error accessing media devices.', error);
+                // Manejo de errores
+            }
+        }
+    </script>
 </body>
 
-</html> -->
+</html>
