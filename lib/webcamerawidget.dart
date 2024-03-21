@@ -16,7 +16,7 @@ class _WebCameraWidgetState extends State<WebCameraWidget> {
   void _loadResources() {
     _injectVideoContainer();
     _injectScript(
-        src: 'https://unpkg.com/es-module-shims@1.7.2/dist/es-module-shims.js',
+        src: 'https:s//unpkg.com/es-module-shims@1.7.2/dist/es-module-shims.js',
         async: true);
     _injectImportMap();
     _injectMainScript();
